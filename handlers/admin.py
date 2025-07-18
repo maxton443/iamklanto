@@ -1,5 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes,
+    ConversationHandler, filters
+)
 import json
 import os
 
@@ -36,8 +40,41 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🔐 Welcome to Admin Panel", reply_markup=reply_markup)
 
-admin_handlers = [
-    CommandHandler("admin", admin_panel)
-]
+# ✅ Message All Logic
+ASK_BROADCAST = range(1)
 
-# এখানে আমরা পরের ধাপে add_menu, view_menus, message_all ইত্যাদির জন্য CallbackQueryHandler যোগ করব।
+async def message_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("📨 Send the message you want to broadcast to all users:")
+    return ASK_BROADCAST
+
+async def broadcast_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    with open(USER_FILE) as f:
+        users = json.load(f)
+
+    success = 0
+    fail = 0
+
+    for user_id in users.keys():
+        if users[user_id].get("banned", False):
+            continue
+        try:
+            await context.bot.send_message(chat_id=int(user_id), text=text)
+            success += 1
+        except:
+            fail += 1
+
+    await update.message.reply_text(f"✅ Message sent to {success} users.\n❌ Failed to send to {fail} users.")
+    return ConversationHandler.END
+
+# ✅ Admin handlers
+admin_handlers = [
+    CommandHandler("admin", admin_panel),
+    ConversationHandler(
+        entry_points=[CallbackQueryHandler(message_all_prompt, pattern="^message_all$")],
+        states={ASK_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_to_all)]},
+        fallbacks=[]
+    )
+]
