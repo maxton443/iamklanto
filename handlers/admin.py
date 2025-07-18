@@ -7,10 +7,12 @@ from telegram.ext import (
 import json
 import os
 
+# 🔧 ফাইল লোকেশন
 CONFIG_FILE = "data/config.json"
 USER_FILE = "data/users.json"
 BANNED_FILE = "data/banned.json"
 
+# 📦 JSON লোড ও সেভ ফাংশন
 def load_json(path):
     if not os.path.exists(path):
         return {} if "config" in path else []
@@ -21,12 +23,12 @@ def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-# ✅ /admin কমান্ড
+# ✅ /admin কমান্ড - এডমিন প্যানেল দেখানো
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     config = load_json(CONFIG_FILE)
 
-    if user_id not in config["admins"]:
+    if user_id not in config.get("admins", []):
         return await update.message.reply_text("❌ You are not authorized.")
 
     keyboard = [
@@ -40,7 +42,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🔐 Welcome to Admin Panel", reply_markup=reply_markup)
 
-# ✅ Message All Logic
+# ✅ Message All সিস্টেম
 ASK_BROADCAST = range(1)
 
 async def message_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,13 +53,15 @@ async def message_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def broadcast_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    with open(USER_FILE) as f:
-        users = json.load(f)
+    if not text:
+        return await update.message.reply_text("❗ Please send text only.")
+    
+    users = load_json(USER_FILE)
 
     success = 0
     fail = 0
 
-    for user_id in users.keys():
+    for user_id in users:
         if users[user_id].get("banned", False):
             continue
         try:
@@ -69,12 +73,15 @@ async def broadcast_to_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Message sent to {success} users.\n❌ Failed to send to {fail} users.")
     return ConversationHandler.END
 
-# ✅ Admin handlers
+# ✅ হ্যান্ডলার লিস্ট
 admin_handlers = [
     CommandHandler("admin", admin_panel),
+    CallbackQueryHandler(message_all_prompt, pattern="^message_all$"),
     ConversationHandler(
         entry_points=[CallbackQueryHandler(message_all_prompt, pattern="^message_all$")],
-        states={ASK_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_to_all)]},
-        fallbacks=[]
+        states={
+            ASK_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_to_all)]
+        },
+        fallbacks=[],
     )
 ]
